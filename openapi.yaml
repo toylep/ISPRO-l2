@@ -1,0 +1,128 @@
+openapi: 3.0.3
+info:
+  title: Прачка сервис
+  description: >
+    Сервис по бронированию стиральных машин. Цель показать что кодогенерация
+    выглядит вполне естественно и удобно. Ручное редактирование OpenAPI лучше
+    использовать в случае если такое требуют процессы, например использование
+    монорепы с кучей проектов
+  version: 0.0.1
+
+paths:
+  /washers:
+    get:
+      summary: Получение списка стиральных машин
+      operationId: getWashers
+      responses:
+        "200":
+          description: Список стиральных машин
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WasherOut"
+
+  /washers/book:
+    post:
+      summary: Бронирование стиральной машины
+      operationId: bookWasher
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WasherBookIn"
+      responses:
+        "200":
+          description: Бронирование создано
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WasherBookOut"
+
+  /washers/my-books:
+    get:
+      summary: Просмотр бронирований
+      operationId: myBooks
+      responses:
+        "200":
+          description: Список бронирований
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WasherOut"
+
+  /washers/{washer_id}:
+    put:
+      summary: Админская функция смены состояния
+      operationId: changeState
+      parameters:
+        - name: washer_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WasherIn"
+      responses:
+        "200":
+          description: Состояние изменено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WasherOut"
+
+components:
+  schemas:
+    WasherState:
+      type: string
+      enum:
+        - available
+        - unavailable
+        - broken
+
+    WasherIn:
+      type: object
+      properties:
+        state:
+          $ref: "#/components/schemas/WasherState"
+      required:
+        - state
+
+    WasherOut:
+      allOf:
+        - $ref: "#/components/schemas/WasherIn"
+        - type: object
+          properties:
+            id:
+              type: integer
+          required:
+            - id
+
+    WasherBookIn:
+      type: object
+      properties:
+        washer_id:
+          type: integer
+        hours:
+          type: integer
+      required:
+        - washer_id
+        - hours
+
+    WasherBookOut:
+      allOf:
+        - $ref: "#/components/schemas/WasherBookIn"
+        - type: object
+          properties:
+            id:
+              type: integer
+          required:
+            - id
