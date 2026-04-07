@@ -7,4 +7,9 @@ requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.135.1",
     "uvicorn>=0.41.0",
+    "prometheus-client>=0.21.0",
+    "stream-api",
 ]
+
+[tool.uv.sources]
+stream-api = { path = "../../../py_projects/stream_api_rs/target/wheels/stream_api-0.1.0-cp314-cp314-macosx_11_0_arm64.whl" }
