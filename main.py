@@ -3,13 +3,80 @@ from pydantic import BaseModel
 from enum import Enum
 import random
 import time
+import logging
+import json
+
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST, REGISTRY
+
+# --- OpenTelemetry ---
+from opentelemetry import trace
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+_resource = Resource.create({"service.name": "washer-service", "service.version": "0.0.1"})
+_provider = TracerProvider(resource=_resource)
+_provider.add_span_processor(
+    BatchSpanProcessor(OTLPSpanExporter(endpoint="http://jaeger:4318/v1/traces"))
+)
+trace.set_tracer_provider(_provider)
+tracer = trace.get_tracer("washer")
+
+
+# --- Настройка логирования (JSON → stdout → Docker → Promtail → Loki) ---
+
+class JsonFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        obj: dict = {
+            "time": self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        # Добавляем trace_id/span_id если есть активный спан (корреляция логов и трейсов)
+        ctx = trace.get_current_span().get_span_context()
+        if ctx.is_valid:
+            obj["trace_id"] = format(ctx.trace_id, "032x")
+            obj["span_id"] = format(ctx.span_id, "016x")
+        # Дополнительные поля из extra={}
+        skip = {
+            "name", "msg", "args", "levelname", "levelno", "pathname",
+            "filename", "module", "exc_info", "exc_text", "stack_info",
+            "lineno", "funcName", "created", "msecs", "relativeCreated",
+            "thread", "threadName", "processName", "process", "message", "taskName",
+        }
+        for key, value in record.__dict__.items():
+            if key not in skip:
+                obj[key] = value
+        return json.dumps(obj, ensure_ascii=False)
+
+
+handler = logging.StreamHandler()
+handler.setFormatter(JsonFormatter())
+
+for name in ("uvicorn", "uvicorn.access", "uvicorn.error", "fastapi", "washer"):
+    log = logging.getLogger(name)
+    log.handlers = [handler]
+    log.setLevel(logging.INFO)
+    log.propagate = False
+
+logging.basicConfig(level=logging.INFO, handlers=[handler])
+logger = logging.getLogger("washer")
+
+
+# --- Приложение ---
 
 app = FastAPI(
     title="Прачка сервис",
-    description="Сервис по бронированию стиральных машин. Цель показать что кодогенерация выглядит вполне естественно и удобно. Ручное редактирование OpenAPI лучше использовать в случае если такое требуют процессы, например использование монорепы с кучей проектов",
+    description="Сервис по бронированию стиральных машин.",
     version="0.0.1",
 )
+
+# Инструментируем FastAPI — автоматически создаёт спаны для каждого запроса
+FastAPIInstrumentor.instrument_app(app)
+
 
 # --- Метрики ---
 
@@ -18,21 +85,16 @@ http_requests_total = Counter(
     "Общее количество HTTP запросов",
     ["method", "path", "status_code"],
 )
-
 http_request_duration_seconds = Histogram(
     "http_request_duration_seconds",
     "Длительность HTTP запросов в секундах",
     ["method", "path"],
 )
-
-# Продуктовая метрика: количество бронирований стиральных машин
 washer_bookings_total = Counter(
     "washer_bookings_total",
     "Общее количество бронирований стиральных машин",
     ["washer_id"],
 )
-
-# Продуктовая метрика: смены состояния машин (для отслеживания поломок/ремонта)
 washer_state_changes_total = Counter(
     "washer_state_changes_total",
     "Количество смен состояния стиральных машин",
@@ -41,21 +103,24 @@ washer_state_changes_total = Counter(
 
 
 @app.middleware("http")
-async def metrics_middleware(request: Request, call_next):
+async def metrics_and_logging_middleware(request: Request, call_next):
     if request.url.path == "/metrics":
         return await call_next(request)
+
     start = time.perf_counter()
     response = await call_next(request)
     duration = time.perf_counter() - start
-    http_requests_total.labels(
-        method=request.method,
-        path=request.url.path,
-        status_code=response.status_code,
-    ).inc()
-    http_request_duration_seconds.labels(
-        method=request.method,
-        path=request.url.path,
-    ).observe(duration)
+
+    path = request.url.path
+    method = request.method
+    status = response.status_code
+
+    http_requests_total.labels(method=method, path=path, status_code=status).inc()
+    http_request_duration_seconds.labels(method=method, path=path).observe(duration)
+    logger.info(
+        "http request",
+        extra={"http_method": method, "http_path": path, "http_status": status, "duration_ms": round(duration * 1000, 2)},
+    )
     return response
 
 
@@ -101,8 +166,19 @@ async def get_washers():
 @app.post("/washers/book", response_model=WasherBookOut)
 async def book_washer(body: WasherBookIn):
     """Бронирование стиральной машины"""
-    washer_bookings_total.labels(washer_id=str(body.washer_id)).inc()
-    return WasherBookOut(id=random.randint(0, 100), washer_id=body.washer_id, hours=body.hours)
+    with tracer.start_as_current_span("book_washer") as span:
+        span.set_attribute("washer.id", body.washer_id)
+        span.set_attribute("washer.hours", body.hours)
+
+        booking_id = random.randint(0, 100)
+        span.set_attribute("booking.id", booking_id)
+
+        washer_bookings_total.labels(washer_id=str(body.washer_id)).inc()
+        logger.info(
+            "washer booked",
+            extra={"washer_id": body.washer_id, "hours": body.hours, "booking_id": booking_id},
+        )
+        return WasherBookOut(id=booking_id, washer_id=body.washer_id, hours=body.hours)
 
 
 @app.get("/washers/my-books", response_model=list[WasherBookOut])
@@ -114,5 +190,13 @@ async def my_books():
 @app.put("/washers/{washer_id}", response_model=WasherOut)
 async def change_state(washer_id: int, body: WasherIn):
     """Админская функция смены состояния"""
-    washer_state_changes_total.labels(washer_id=str(washer_id), new_state=body.state.value).inc()
-    return WasherOut(id=washer_id, state=body.state)
+    with tracer.start_as_current_span("change_washer_state") as span:
+        span.set_attribute("washer.id", washer_id)
+        span.set_attribute("washer.new_state", body.state.value)
+
+        washer_state_changes_total.labels(washer_id=str(washer_id), new_state=body.state.value).inc()
+        logger.info(
+            "washer state changed",
+            extra={"washer_id": washer_id, "new_state": body.state.value},
+        )
+        return WasherOut(id=washer_id, state=body.state)

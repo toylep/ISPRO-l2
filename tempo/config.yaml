@@ -1,0 +1,44 @@
+server:
+  http_listen_port: 3200
+
+# В Tempo 2.10 'all' target включает block-builder, которому нужна Kafka.
+# Указываем фиктивный topic чтобы пройти валидацию — реальный Kafka не нужен,
+# т.к. single-binary mode использует live-store напрямую (без Kafka).
+ingest:
+  kafka:
+    topic: tempo-traces
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        http:
+          endpoint: 0.0.0.0:4318
+        grpc:
+          endpoint: 0.0.0.0:4317
+
+storage:
+  trace:
+    backend: local
+    wal:
+      path: /var/tempo/wal
+    local:
+      path: /var/tempo/blocks
+
+# Связь трейсов с метриками Prometheus
+metrics_generator:
+  registry:
+    external_labels:
+      source: tempo
+  storage:
+    path: /var/tempo/generator/wal
+    remote_write:
+      - url: http://prometheus:9090/api/v1/write
+        send_exemplars: true
+
+overrides:
+  defaults:
+    metrics_generator:
+      processors:
+        - service-graphs
+        - span-metrics

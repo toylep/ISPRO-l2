@@ -2,7 +2,7 @@
   "title": "Washer Service",
   "uid": "washer-service",
   "schemaVersion": 38,
-  "version": 1,
+  "version": 3,
   "refresh": "10s",
   "time": { "from": "now-30m", "to": "now" },
   "panels": [
@@ -11,19 +11,16 @@
       "title": "RPS (запросов в секунду)",
       "type": "timeseries",
       "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
           "expr": "sum by (path) (rate(http_requests_total[1m]))",
           "legendFormat": "{{path}}",
-          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" }
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
         }
       ],
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "fieldConfig": {
-        "defaults": {
-          "unit": "reqps",
-          "custom": { "lineWidth": 2 }
-        }
+        "defaults": { "unit": "reqps", "custom": { "lineWidth": 2 } }
       }
     },
     {
@@ -31,29 +28,26 @@
       "title": "Latency p50 / p95 / p99",
       "type": "timeseries",
       "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
           "expr": "histogram_quantile(0.50, sum by (le, path) (rate(http_request_duration_seconds_bucket[1m])))",
           "legendFormat": "p50 {{path}}",
-          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" }
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
         },
         {
           "expr": "histogram_quantile(0.95, sum by (le, path) (rate(http_request_duration_seconds_bucket[1m])))",
           "legendFormat": "p95 {{path}}",
-          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" }
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
         },
         {
           "expr": "histogram_quantile(0.99, sum by (le, path) (rate(http_request_duration_seconds_bucket[1m])))",
           "legendFormat": "p99 {{path}}",
-          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" }
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
         }
       ],
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "fieldConfig": {
-        "defaults": {
-          "unit": "s",
-          "custom": { "lineWidth": 2 }
-        }
+        "defaults": { "unit": "s", "custom": { "lineWidth": 2 } }
       }
     },
     {
@@ -61,14 +55,14 @@
       "title": "Бронирования (продуктовая метрика)",
       "type": "timeseries",
       "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
           "expr": "sum by (washer_id) (rate(washer_bookings_total[1m]))",
           "legendFormat": "Машина #{{washer_id}}",
-          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" }
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
         }
       ],
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "fieldConfig": {
         "defaults": {
           "unit": "reqps",
@@ -82,14 +76,14 @@
       "title": "Всего бронирований",
       "type": "stat",
       "gridPos": { "x": 12, "y": 8, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
           "expr": "sum(washer_bookings_total)",
           "legendFormat": "Всего",
-          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" }
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
         }
       ],
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -110,37 +104,91 @@
       "title": "Смены состояния по типу",
       "type": "stat",
       "gridPos": { "x": 18, "y": 8, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
           "expr": "sum by (new_state) (washer_state_changes_total)",
           "legendFormat": "{{new_state}}",
-          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" }
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
         }
       ],
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short"
-        }
-      },
+      "fieldConfig": { "defaults": { "unit": "short" } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
     },
     {
       "id": 6,
       "title": "HTTP статус коды",
       "type": "piechart",
-      "gridPos": { "x": 12, "y": 12, "w": 12, "h": 8 },
+      "gridPos": { "x": 12, "y": 12, "w": 12, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
           "expr": "sum by (status_code) (increase(http_requests_total[5m]))",
           "legendFormat": "{{status_code}}",
-          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" }
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
         }
       ],
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
-      "fieldConfig": {
-        "defaults": { "unit": "short" }
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "id": 7,
+      "title": "Логи сервиса",
+      "type": "logs",
+      "gridPos": { "x": 0, "y": 16, "w": 24, "h": 10 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "expr": "{service=\"app\"} | json",
+          "legendFormat": "",
+          "datasource": { "type": "loki", "uid": "loki" }
+        }
+      ],
+      "options": {
+        "dedupStrategy": "none",
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "sortOrder": "Descending"
       }
+    },
+    {
+      "id": 8,
+      "title": "Логи бронирований",
+      "type": "logs",
+      "gridPos": { "x": 0, "y": 26, "w": 24, "h": 8 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "expr": "{service=\"app\"} |= `washer booked` | json",
+          "legendFormat": "",
+          "datasource": { "type": "loki", "uid": "loki" }
+        }
+      ],
+      "options": {
+        "dedupStrategy": "none",
+        "showLabels": true,
+        "wrapLogMessage": true,
+        "enableLogDetails": true,
+        "sortOrder": "Descending"
+      }
+    },
+    {
+      "id": 9,
+      "title": "Трейсы (Jaeger)",
+      "description": "Последние трейсы washer-service. Service Map недоступен для одного сервиса — используйте Explore → Jaeger для просмотра графа спанов.",
+      "type": "table",
+      "gridPos": { "x": 0, "y": 34, "w": 24, "h": 10 },
+      "datasource": { "type": "jaeger", "uid": "jaeger" },
+      "targets": [
+        {
+          "queryType": "search",
+          "service": "washer-service",
+          "limit": 20,
+          "datasource": { "type": "jaeger", "uid": "jaeger" }
+        }
+      ]
     }
   ]
 }
