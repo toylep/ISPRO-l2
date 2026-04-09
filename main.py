@@ -1,20 +1,24 @@
-from fastapi import FastAPI, Request, Response
-from pydantic import BaseModel
-from enum import Enum
+import json
+import logging
 import random
 import time
-import logging
-import json
+from enum import Enum
 
-from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST, REGISTRY
-
-# --- OpenTelemetry ---
+from fastapi import FastAPI, Request, Response
 from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    REGISTRY,
+    Counter,
+    Histogram,
+    generate_latest,
+)
+from pydantic import BaseModel
 
 _resource = Resource.create({"service.name": "washer-service", "service.version": "0.0.1"})
 _provider = TracerProvider(resource=_resource)
@@ -26,6 +30,7 @@ tracer = trace.get_tracer("washer")
 
 
 # --- Настройка логирования (JSON → stdout → Docker → Promtail → Loki) ---
+
 
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
@@ -42,10 +47,28 @@ class JsonFormatter(logging.Formatter):
             obj["span_id"] = format(ctx.span_id, "016x")
         # Дополнительные поля из extra={}
         skip = {
-            "name", "msg", "args", "levelname", "levelno", "pathname",
-            "filename", "module", "exc_info", "exc_text", "stack_info",
-            "lineno", "funcName", "created", "msecs", "relativeCreated",
-            "thread", "threadName", "processName", "process", "message", "taskName",
+            "name",
+            "msg",
+            "args",
+            "levelname",
+            "levelno",
+            "pathname",
+            "filename",
+            "module",
+            "exc_info",
+            "exc_text",
+            "stack_info",
+            "lineno",
+            "funcName",
+            "created",
+            "msecs",
+            "relativeCreated",
+            "thread",
+            "threadName",
+            "processName",
+            "process",
+            "message",
+            "taskName",
         }
         for key, value in record.__dict__.items():
             if key not in skip:
@@ -119,7 +142,12 @@ async def metrics_and_logging_middleware(request: Request, call_next):
     http_request_duration_seconds.labels(method=method, path=path).observe(duration)
     logger.info(
         "http request",
-        extra={"http_method": method, "http_path": path, "http_status": status, "duration_ms": round(duration * 1000, 2)},
+        extra={
+            "http_method": method,
+            "http_path": path,
+            "http_status": status,
+            "duration_ms": round(duration * 1000, 2),
+        },
     )
     return response
 
@@ -130,6 +158,7 @@ async def metrics():
 
 
 # --- Модели ---
+
 
 class WasherState(str, Enum):
     AVAILABLE = "available"
@@ -155,6 +184,7 @@ class WasherBookOut(WasherBookIn):
 
 
 # --- Эндпоинты ---
+
 
 @app.get("/washers", response_model=list[WasherOut])
 async def get_washers():
@@ -194,7 +224,9 @@ async def change_state(washer_id: int, body: WasherIn):
         span.set_attribute("washer.id", washer_id)
         span.set_attribute("washer.new_state", body.state.value)
 
-        washer_state_changes_total.labels(washer_id=str(washer_id), new_state=body.state.value).inc()
+        washer_state_changes_total.labels(
+            washer_id=str(washer_id), new_state=body.state.value
+        ).inc()
         logger.info(
             "washer state changed",
             extra={"washer_id": washer_id, "new_state": body.state.value},
