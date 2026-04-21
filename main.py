@@ -195,21 +195,27 @@ async def get_washers():
 
 @app.post("/washers/book", response_model=WasherBookOut)
 async def book_washer(body: WasherBookIn):
-    """Бронирование стиральной машины"""
-    with tracer.start_as_current_span("book_washer") as span:
-        span.set_attribute("washer.id", body.washer_id)
-        span.set_attribute("washer.hours", body.hours)
+    with tracer.start_as_current_span("book_washer") as main_span:
+        main_span.set_attribute("washer.id", body.washer_id)
 
-        booking_id = random.randint(0, 100)
-        span.set_attribute("booking.id", booking_id)
+        # Спан 1 — валидация
+        with tracer.start_as_current_span("validate_request"):
+            if body.hours <= 0:
+                raise ValueError("Invalid hours")
 
-        washer_bookings_total.labels(washer_id=str(body.washer_id)).inc()
-        logger.info(
-            "washer booked",
-            extra={"washer_id": body.washer_id, "hours": body.hours, "booking_id": booking_id},
+        # Спан 2 — "бизнес логика"
+        with tracer.start_as_current_span("process_booking"):
+            time.sleep(0.1)  # имитация
+
+        # Спан 3 — "сохранение"
+        with tracer.start_as_current_span("save_booking"):
+            booking_id = random.randint(0, 100)
+
+        return WasherBookOut(
+            id=booking_id,
+            washer_id=body.washer_id,
+            hours=body.hours,
         )
-        return WasherBookOut(id=booking_id, washer_id=body.washer_id, hours=body.hours)
-
 
 @app.get("/washers/my-books", response_model=list[WasherBookOut])
 async def my_books():
