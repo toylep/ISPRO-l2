@@ -46,7 +46,7 @@ Graphana развернута по url http://localhost:3000/
 
 Язык запросов
 ![ql_loki](img/ql_loki.png)
-
+![ql_jaeger](img/ql_jaeger.png)
 ## CI/CD
 Добавлен пайплайн для прогона тестов и линтеры
 ![pipeline](img/CI.png)
